@@ -5,6 +5,7 @@ use actix_service::{Service, Transform};
 use futures::future::{ok, Either, FutureExt, LocalBoxFuture};
 use std::sync::Arc;
 use crate::ServiceState::Verified;
+use std::ops::Deref;
 
 pub struct Condition<T, F> {
     trans: Arc<T>,
@@ -83,6 +84,7 @@ impl<T, S, F> Service for ConditionMiddleware<T, S, F>
             ServiceState::Unverified(s) => {
                 let service = s.take().unwrap();
                 if (self.enable)(&req) {
+                    let transformed_service = self.trans.new_transform(service);
                     Some(service)
                 } else {
                     Some(service)
@@ -93,7 +95,7 @@ impl<T, S, F> Service for ConditionMiddleware<T, S, F>
         if let Some(service_to_overwrite) = service_to_overwrite {
             self.service = Verified(service_to_overwrite)
         }
-        let verified_service = self.service.get_verified().unwrap();
+        let verified_service = self.service.get_verified().expect("Should always be Verified at this point");
         unimplemented!()
         // use ConditionMiddleware::*;
         // match self {
