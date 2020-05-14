@@ -22,32 +22,36 @@ impl<S, T, F> Transform<S> for Condition<T, F>
         T: Transform<S, Request = S::Request, Response = S::Response, Error = S::Error> + 'static,
         T::Future: 'static,
         T::InitError: 'static,
-        T::Transform: 'static
+        T::Transform: 'static,
+        F : Fn(&S::Request) -> bool + Clone + 'static
 {
     type Request = S::Request;
     type Response = S::Response;
     type Error = T::Error;
     type InitError = T::InitError;
-    type Transform = ConditionMiddleware<T, S>;
+    type Transform = ConditionMiddleware<T, S, F>;
     type Future = LocalBoxFuture<'static, Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
         ok(ConditionMiddleware {
             trans: self.trans.clone(),
-            service
+            service: service,
+            enable: self.enable.clone()
         })
             .boxed_local()
     }
 }
 
-pub struct ConditionMiddleware<T, S> {
+pub struct ConditionMiddleware<T, S, F> {
     trans: Arc<T>,
-    service: S
+    service: S,
+    enable: F
 }
 
-impl<T, S> Service for ConditionMiddleware<T, S>
+impl<T, S, F> Service for ConditionMiddleware<T, S, F>
     where
-        S: Service + 'static
+        S: Service + 'static,
+        F: Fn(&S::Request) -> bool
 {
     type Request = S::Request;
     type Response = S::Response;
@@ -59,6 +63,9 @@ impl<T, S> Service for ConditionMiddleware<T, S>
     }
 
     fn call(&mut self, req: S::Request) -> Self::Future {
+        if (self.enable)(&req) {
+
+        }
         unimplemented!()
         // use ConditionMiddleware::*;
         // match self {
