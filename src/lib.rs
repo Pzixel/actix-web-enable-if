@@ -4,6 +4,7 @@ use std::task::{Context, Poll};
 use actix_service::{Service, Transform};
 use futures::future::{ok, Either, FutureExt, LocalBoxFuture};
 use std::sync::Arc;
+use crate::ServiceState::Verified;
 
 pub struct Condition<T, F> {
     trans: Arc<T>,
@@ -35,17 +36,31 @@ impl<S, T, F> Transform<S> for Condition<T, F>
     fn new_transform(&self, service: S) -> Self::Future {
         ok(ConditionMiddleware {
             trans: self.trans.clone(),
-            service: service,
-            enable: self.enable.clone()
+            service: ServiceState::Unverified(Some(service)),
+            enable: self.enable.clone(),
         })
             .boxed_local()
     }
 }
 
+enum ServiceState<U, V> {
+    Unverified(Option<U>),
+    Verified(V)
+}
+
+impl<U, V> ServiceState<U, V> {
+    pub fn get_verified(&mut self) -> Option<&mut V> {
+        match self {
+            ServiceState::Unverified(_) => None,
+            ServiceState::Verified(x) => Some(x),
+        }
+    }
+}
+
 pub struct ConditionMiddleware<T, S, F> {
     trans: Arc<T>,
-    service: S,
-    enable: F
+    service: ServiceState<S, S>,
+    enable: F,
 }
 
 impl<T, S, F> Service for ConditionMiddleware<T, S, F>
@@ -63,9 +78,22 @@ impl<T, S, F> Service for ConditionMiddleware<T, S, F>
     }
 
     fn call(&mut self, req: S::Request) -> Self::Future {
-        if (self.enable)(&req) {
-
+        let maybe_service = &mut self.service;
+        let service_to_overwrite = match maybe_service {
+            ServiceState::Unverified(s) => {
+                let service = s.take().unwrap();
+                if (self.enable)(&req) {
+                    Some(service)
+                } else {
+                    Some(service)
+                }
+            },
+            Verified(_) => None,
+        };
+        if let Some(service_to_overwrite) = service_to_overwrite {
+            self.service = Verified(service_to_overwrite)
         }
+        let verified_service = self.service.get_verified().unwrap();
         unimplemented!()
         // use ConditionMiddleware::*;
         // match self {
